@@ -8,6 +8,10 @@ import CustomerHomeScreen from './screens/CustomerHomeScreen';
 import DetailScreen from './screens/DetailScreen';
 import CartScreen from './screens/CartScreen';
 import AdminDashboardScreen from './screens/AdminDashboardScreen';
+import ChatBot from './components/ChatbotButton';
+import LaporanScreen from './screens/LaporanScreen';
+import ProfileUMKMScreen from './screens/ProfileUMKMScreen';
+import PromoScreen from './screens/PromoScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -18,10 +22,14 @@ export default function App() {
         <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
         <Stack.Screen name="LoginOwner" component={LoginOwnerScreen} options={{ title: 'Login Admin' }} />
         <Stack.Screen name="CustomerHome" component={CustomerHomeScreen} options={{ title: 'Katalog Produk' }} />
-        <Stack.Screen name="Detail" component={DetailScreen} options={{ title: 'Detail' }} />
+        <Stack.Screen name="Detail" component={DetailScreen} options={{ title: 'Detail Produk' }} />
         <Stack.Screen name="Cart" component={CartScreen} options={{ title: 'Keranjang Belanja' }} />
-        <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ title: 'Panel Owner' }} />
+        <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="Laporan" component={LaporanScreen} options={{ title: 'Laporan' }} />
+        <Stack.Screen name="ProfileUMKM" component={ProfileUMKMScreen} options={{ title: 'Profil UMKM' }} />
+        <Stack.Screen name="Promo" component={PromoScreen} options={{ title: 'Promo' }} />
       </Stack.Navigator>
+      <ChatBot />
     </NavigationContainer>
   );
 }

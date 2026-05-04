@@ -8,14 +8,16 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function AdminDashboardScreen() {
   const [activeTab, setActiveTab] = useState('home'); 
-  const [products, setProducts] = useState([]);
+  const [products, setproducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // State Modal Produk (Tambah/Edit)
   const [modalVisible, setModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState({});
   const [isAdding, setIsAdding] = useState(false);
+
+  const [orderModalVisible, setOrderModalVisible] = useState(false);
+  const [editingOrder, setEditingOrder] = useState({});
 
   useEffect(() => {
     fetchData();
@@ -29,8 +31,8 @@ export default function AdminDashboardScreen() {
       
       if (prodError) throw prodError;
       if (ordError) throw ordError;
-      
-      setProducts(prod || []);
+
+      setproducts(prod || []);
       setOrders(ord || []);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -40,7 +42,7 @@ export default function AdminDashboardScreen() {
     }
   };
 
-  // --- LOGIKA PRODUK (KATALOG) ---
+
   const handleSaveProduct = async () => {
     if (!editingProduct.name || !editingProduct.price || !editingProduct.category) {
       return Alert.alert("Lengkapi Data", "Nama, Harga, dan Kategori wajib diisi");
@@ -87,6 +89,22 @@ export default function AdminDashboardScreen() {
     ]);
   };
 
+  //fungsi simpan edit pesanan
+  const handleSaveOrder = async () => {
+    const extra =parseInt(editingOrder.extra_charge) || 0;
+    const originalPrice = editingOrder._originalPrice || editingOrder.total_price;
+    const newTotal = originalPrice + extra;
+
+    await supabase.from('orders').update({
+      extra_charge:extra,
+      notes:editingOrder.notes||'',
+      total_price: newTotal,
+    }).eq('id', editingOrder.id);
+    setOrderModalVisible(false);
+    fetchData();
+
+  };
+
   const chatCustomer = (phone) => {
     // Jika nomor diawali '0', ganti jadi '62'
     let formattedPhone = phone.startsWith('0') ? '62' + phone.slice(1) : phone;
@@ -94,12 +112,25 @@ export default function AdminDashboardScreen() {
     Linking.openURL(`whatsapp://send?phone=${formattedPhone}`);
   };
 
+  const totalPendapatan = orders
+    .filter(o => o.status === 'Selesai')
+    .reduce((sum, o) => sum + (o.total_price || 0), 0);
+
+  const uniqueCustomers = orders.reduce((acc,order) => {
+    const exists = acc.find(c=>c.phone_number === order.phone_number);
+    if (!exists) acc.push({ customer_name: order.customer_name, phone_number: order.phone_number });
+    return acc;
+  }, []);
+  const avgPesanan = orders.length > 0
+  ? Math.round(orders.reduce((sum, o) => sum + (o.total_price || 0), 0) / orders.length)
+  : 0;
   // --- TAMPILAN PER TAB ---
   
   // 1. TAB HOME (Statistik)
-  const renderHome = () => (
+ const renderHome = () => (
     <ScrollView style={{ padding: 20 }}>
       <Text style={styles.sectionTitle}>Ringkasan Bisnis</Text>
+
       <View style={styles.statsRow}>
         <View style={[styles.statsCard, { backgroundColor: '#E3F2FD' }]}>
           <Text style={styles.statsValue}>{products.filter(p => p.is_active).length}</Text>
@@ -110,6 +141,7 @@ export default function AdminDashboardScreen() {
           <Text style={styles.statsLabel}>Non-Aktif</Text>
         </View>
       </View>
+
       <View style={styles.statsRow}>
         <View style={[styles.statsCard, { backgroundColor: '#FFF3E0' }]}>
           <Text style={styles.statsValue}>{orders.filter(o => o.status !== 'Selesai').length}</Text>
@@ -120,78 +152,190 @@ export default function AdminDashboardScreen() {
           <Text style={styles.statsLabel}>Selesai</Text>
         </View>
       </View>
+
+      {/* ← CARD BARU: Total Pendapatan */}
+      <View style={[styles.statsCardFull, { backgroundColor: '#F3E5F5' }]}>
+        <MaterialCommunityIcons name="cash-multiple" size={28} color="#7B1FA2" />
+        <View style={{ marginLeft: 15 }}>
+          <Text style={[styles.statsValue, { color: '#7B1FA2' }]}>
+            Rp {totalPendapatan.toLocaleString()}
+          </Text>
+          <Text style={styles.statsLabel}>Total Pendapatan (Selesai)</Text>
+        </View>
+      </View>
+
+      {/* ← CARD BARU: Rata-rata pesanan */}
+      <View style={[styles.statsCardFull, { backgroundColor: '#E8F5E9' }]}>
+        <MaterialCommunityIcons name="chart-line" size={28} color="#2E7D32" />
+        <View style={{ marginLeft: 15 }}>
+          <Text style={[styles.statsValue, { color: '#2E7D32' }]}>
+            Rp {avgPesanan.toLocaleString()}
+          </Text>
+          <Text style={styles.statsLabel}>Rata-rata Nilai Pesanan</Text>
+        </View>
+      </View>
+
+      {/* ← CARD BARU: Jumlah pelanggan unik */}
+      <View style={[styles.statsCardFull, { backgroundColor: '#FFF8E1' }]}>
+        <MaterialCommunityIcons name="account-group" size={28} color="#F57F17" />
+        <View style={{ marginLeft: 15 }}>
+          <Text style={[styles.statsValue, { color: '#F57F17' }]}>{uniqueCustomers.length}</Text>
+          <Text style={styles.statsLabel}>Total Pelanggan Unik</Text>
+        </View>
+      </View>
+
       <TouchableOpacity style={styles.refreshBtn} onPress={fetchData}>
         <MaterialCommunityIcons name="refresh" size={20} color="#FFF" />
-        <Text style={{color:'#FFF', fontWeight:'bold', marginLeft:10}}>Perbarui Data</Text>
+        <Text style={{ color: '#FFF', fontWeight: 'bold', marginLeft: 10 }}>Perbarui Data</Text>
       </TouchableOpacity>
     </ScrollView>
+  );
+    
+ const renderCustomers = () => (
+    <FlatList
+      data={uniqueCustomers}
+      keyExtractor={(item, index) => index.toString()}
+      ListHeaderComponent={
+        <Text style={[styles.sectionTitle, { margin: 20 }]}>
+          Data Pelanggan ({uniqueCustomers.length})
+        </Text>
+      }
+      ListEmptyComponent={
+        <View style={{ alignItems: 'center', marginTop: 40 }}>
+          <MaterialCommunityIcons name="account-off" size={60} color="#D4C4B7" />
+          <Text style={{ color: '#AAA', marginTop: 10 }}>Belum ada data pelanggan</Text>
+        </View>
+      }
+      renderItem={({ item, index }) => (
+        <View style={styles.customerCard}>
+          <View style={styles.customerAvatar}>
+            <Text style={styles.customerAvatarText}>
+              {item.customer_name?.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.custName}>{item.customer_name}</Text>
+            <Text style={{ color: '#7F8C8D', fontSize: 13 }}>{item.phone_number}</Text>
+            <Text style={{ color: '#B58255', fontSize: 12, marginTop: 2 }}>
+              {orders.filter(o => o.phone_number === item.phone_number).length} pesanan
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => chatCustomer(item.phone_number)}>
+            <MaterialCommunityIcons name="whatsapp" size={30} color="#25D366" />
+          </TouchableOpacity>
+        </View>
+      )}
+    />
   );
 
   return (
     <View style={styles.container}>
-      {/* HEADER TAB NAVIGATION */}
+      {/* TAB BAR — sekarang 4 tab */}
       <View style={styles.tabBar}>
-        <TouchableOpacity onPress={() => setActiveTab('home')} style={[styles.tab, activeTab === 'home' && styles.tabActive]}>
-          <MaterialCommunityIcons name="home" size={24} color={activeTab === 'home' ? '#3498DB' : '#7F8C8D'} />
-          <Text style={[styles.tabLabel, activeTab === 'home' && styles.tabLabelActive]}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setActiveTab('products')} style={[styles.tab, activeTab === 'products' && styles.tabActive]}>
-          <MaterialCommunityIcons name="package-variant-closed" size={24} color={activeTab === 'products' ? '#3498DB' : '#7F8C8D'} />
-          <Text style={[styles.tabLabel, activeTab === 'products' && styles.tabLabelActive]}>Katalog</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setActiveTab('orders')} style={[styles.tab, activeTab === 'orders' && styles.tabActive]}>
-          <MaterialCommunityIcons name="clipboard-text-outline" size={24} color={activeTab === 'orders' ? '#3498DB' : '#7F8C8D'} />
-          <Text style={[styles.tabLabel, activeTab === 'orders' && styles.tabLabelActive]}>Pesanan</Text>
-        </TouchableOpacity>
+        {[
+          { key: 'home', icon: 'home', label: 'Home' },
+          { key: 'products', icon: 'package-variant-closed', label: 'Katalog' },
+          { key: 'orders', icon: 'clipboard-text-outline', label: 'Pesanan' },
+          { key: 'customers', icon: 'account-group', label: 'Pelanggan' }, // ← TAB BARU
+        ].map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => setActiveTab(tab.key)}
+            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+          >
+            <MaterialCommunityIcons
+              name={tab.icon}
+              size={22}
+              color={activeTab === tab.key ? '#B58255' : '#7F8C8D'}
+            />
+            <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {loading && <ActivityIndicator size="large" color="#3498DB" style={{marginTop: 20}} />}
+      {loading && <ActivityIndicator size="large" color="#B58255" style={{ marginTop: 20 }} />}
 
-      {activeTab === 'home' ? renderHome() : (
-        <FlatList 
+      {/* RENDER KONTEN PER TAB */}
+      {activeTab === 'home' && renderHome()}
+      {activeTab === 'customers' && renderCustomers()}
+
+      {(activeTab === 'products' || activeTab === 'orders') && (
+        <FlatList
           data={activeTab === 'products' ? products : orders}
           keyExtractor={(item) => item.id.toString()}
           ListHeaderComponent={() => activeTab === 'products' && (
             <TouchableOpacity style={styles.btnAdd} onPress={() => { setEditingProduct({}); setIsAdding(true); setModalVisible(true); }}>
               <MaterialCommunityIcons name="plus" size={20} color="#FFF" />
-              <Text style={{color:'#FFF', fontWeight:'bold', marginLeft: 10}}>Tambah Produk Baru</Text>
+              <Text style={{ color: '#FFF', fontWeight: 'bold', marginLeft: 10 }}>Tambah Produk Baru</Text>
             </TouchableOpacity>
           )}
           renderItem={({ item }) => (
             activeTab === 'products' ? (
-              // TAMPILAN ITEM KATALOG (PRODUK)
               <View style={styles.card}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.nameText, !item.is_active && {color: '#AAA'}]}>{item.name} {!item.is_active && '(Off)'}</Text>
+                  <Text style={[styles.nameText, !item.is_active && { color: '#AAA' }]}>
+                    {item.name} {!item.is_active && '(Off)'}
+                  </Text>
                   <Text style={styles.categoryBadge}>{item.category || 'Tanpa Kategori'}</Text>
                   <Text style={styles.priceText}>Rp {item.price?.toLocaleString()}</Text>
                 </View>
                 <View style={styles.actionRow}>
-                  <TouchableOpacity onPress={() => toggleStatus(item.id, item.is_active)}><MaterialCommunityIcons name={item.is_active ? "eye" : "eye-off"} size={26} color={item.is_active ? "green" : "gray"} /></TouchableOpacity>
-                  <TouchableOpacity onPress={() => { setEditingProduct(item); setIsAdding(false); setModalVisible(true); }}><MaterialCommunityIcons name="pencil" size={26} color="blue" /></TouchableOpacity>
-                  <TouchableOpacity onPress={() => deleteProduct(item.id)}><MaterialCommunityIcons name="trash-can" size={26} color="red" /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => toggleStatus(item.id, item.is_active)}>
+                    <MaterialCommunityIcons name={item.is_active ? "eye" : "eye-off"} size={26} color={item.is_active ? "green" : "gray"} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => { setEditingProduct(item); setIsAdding(false); setModalVisible(true); }}>
+                    <MaterialCommunityIcons name="pencil" size={26} color="blue" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => deleteProduct(item.id)}>
+                    <MaterialCommunityIcons name="trash-can" size={26} color="red" />
+                  </TouchableOpacity>
                 </View>
               </View>
             ) : (
-              // TAMPILAN ITEM PESANAN
+              // ← TAMPILAN PESANAN DENGAN TOMBOL EDIT BARU
               <View style={styles.orderCard}>
                 <View style={styles.orderHeader}>
                   <Text style={styles.custName}>{item.customer_name}</Text>
-                  <TouchableOpacity onPress={() => deleteOrder(item.id)}><MaterialCommunityIcons name="close-box" size={26} color="red" /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => deleteOrder(item.id)}>
+                    <MaterialCommunityIcons name="close-box" size={26} color="red" />
+                  </TouchableOpacity>
                 </View>
                 <Text style={styles.orderTotal}>Total: Rp {item.total_price?.toLocaleString()}</Text>
-                <Text style={[styles.orderStatus, {color: item.status === 'Selesai' ? '#27AE60' : '#E67E22'}]}>
+                {item.extra_charge > 0 && (
+                  <Text style={{ color: '#E67E22', fontSize: 13 }}>
+                    + Biaya tambahan: Rp {item.extra_charge?.toLocaleString()}
+                  </Text>
+                )}
+                {item.notes ? (
+                  <Text style={{ color: '#7F8C8D', fontSize: 13, fontStyle: 'italic' }}>
+                    Catatan: {item.notes}
+                  </Text>
+                ) : null}
+                <Text style={[styles.orderStatus, { color: item.status === 'Selesai' ? '#27AE60' : '#E67E22' }]}>
                   Status: {item.status || 'Baru'}
                 </Text>
                 <View style={styles.btnRow}>
                   <TouchableOpacity style={styles.btnWA} onPress={() => chatCustomer(item.phone_number)}>
                     <MaterialCommunityIcons name="whatsapp" size={18} color="#FFF" />
-                    <Text style={{color:'#FFF', fontWeight:'bold', marginLeft:5}}>Chat WA</Text>
+                    <Text style={{ color: '#FFF', fontWeight: 'bold', marginLeft: 5 }}>Chat WA</Text>
+                  </TouchableOpacity>
+                  {/* ← TOMBOL EDIT PESANAN BARU */}
+                  <TouchableOpacity
+                    style={styles.btnEdit}
+                    onPress={() => {
+                      setEditingOrder({ ...item, _originalPrice: item.total_price - (item.extra_charge || 0) });
+                      setOrderModalVisible(true);
+                    }}
+                  >
+                    <MaterialCommunityIcons name="pencil" size={18} color="#FFF" />
+                    <Text style={{ color: '#FFF', fontWeight: 'bold', marginLeft: 5 }}>Edit</Text>
                   </TouchableOpacity>
                   {item.status !== 'Selesai' && (
                     <TouchableOpacity style={styles.btnDone} onPress={() => updateOrderStatus(item.id)}>
                       <MaterialCommunityIcons name="check" size={18} color="#FFF" />
-                      <Text style={{color:'#FFF', fontWeight:'bold', marginLeft:5}}>Selesaikan</Text>
+                      <Text style={{ color: '#FFF', fontWeight: 'bold', marginLeft: 5 }}>Selesai</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -201,31 +345,64 @@ export default function AdminDashboardScreen() {
         />
       )}
 
-      {/* MODAL TAMBAH & EDIT (LENGKAP DENGAN KATEGORI) */}
+      {/* MODAL PRODUK (tidak berubah) */}
       <Modal visible={modalVisible} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{isAdding ? 'Tambah' : 'Edit'} Produk</Text>
             <ScrollView>
               <Text style={styles.inputLabel}>Nama Produk</Text>
-              <TextInput style={styles.input} placeholder="Nama Produk" value={editingProduct.name} onChangeText={t => setEditingProduct({...editingProduct, name:t})} />
-              
+              <TextInput style={styles.input} placeholder="Nama Produk" value={editingProduct.name} onChangeText={t => setEditingProduct({ ...editingProduct, name: t })} />
               <Text style={styles.inputLabel}>Harga</Text>
-              <TextInput style={styles.input} placeholder="Harga (Contoh: 15000)" value={editingProduct.price?.toString()} onChangeText={t => setEditingProduct({...editingProduct, price:t})} keyboardType="numeric" />
-              
+              <TextInput style={styles.input} placeholder="Harga (Contoh: 15000)" value={editingProduct.price?.toString()} onChangeText={t => setEditingProduct({ ...editingProduct, price: t })} keyboardType="numeric" />
               <Text style={styles.inputLabel}>Kategori</Text>
-              <TextInput style={styles.input} placeholder="Contoh: Makanan, Minuman, Pakaian" value={editingProduct.category} onChangeText={t => setEditingProduct({...editingProduct, category:t})} />
-              
+              <TextInput style={styles.input} placeholder="Contoh: Makanan, Minuman" value={editingProduct.category} onChangeText={t => setEditingProduct({ ...editingProduct, category: t })} />
               <Text style={styles.inputLabel}>URL Gambar</Text>
-              <TextInput style={styles.input} placeholder="https://image-link.com" value={editingProduct.image_url} onChangeText={t => setEditingProduct({...editingProduct, image_url:t})} />
-              
+              <TextInput style={styles.input} placeholder="https://image-link.com" value={editingProduct.image_url} onChangeText={t => setEditingProduct({ ...editingProduct, image_url: t })} />
               <TouchableOpacity style={styles.btnSave} onPress={handleSaveProduct}>
-                <Text style={{color:'#FFF', fontWeight:'bold', fontSize:16}}>Simpan Produk</Text>
+                <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>Simpan Produk</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={{marginTop:20}}>
-                <Text style={{color:'red', textAlign:'center', fontWeight:'bold'}}>Batal</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={{ marginTop: 20 }}>
+                <Text style={{ color: 'red', textAlign: 'center', fontWeight: 'bold' }}>Batal</Text>
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ← MODAL EDIT PESANAN BARU */}
+      <Modal visible={orderModalVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Pesanan</Text>
+            <Text style={{ color: '#7F8C8D', textAlign: 'center', marginBottom: 20 }}>
+              {editingOrder.customer_name}
+            </Text>
+            <Text style={styles.inputLabel}>Biaya Tambahan (Rp)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Contoh: 5000 (ongkir, dll)"
+              value={editingOrder.extra_charge?.toString()}
+              onChangeText={t => setEditingOrder({ ...editingOrder, extra_charge: t })}
+              keyboardType="numeric"
+            />
+            <Text style={styles.inputLabel}>Catatan untuk Pesanan</Text>
+            <TextInput
+              style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
+              placeholder="Contoh: Tolong dibungkus rapi, tanpa es, dll."
+              value={editingOrder.notes}
+              onChangeText={t => setEditingOrder({ ...editingOrder, notes: t })}
+              multiline
+            />
+            <Text style={{ color: '#B58255', fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>
+              Total baru: Rp {((editingOrder._originalPrice || 0) + (parseInt(editingOrder.extra_charge) || 0)).toLocaleString()}
+            </Text>
+            <TouchableOpacity style={styles.btnSave} onPress={handleSaveOrder}>
+              <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>Simpan Perubahan</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setOrderModalVisible(false)} style={{ marginTop: 15 }}>
+              <Text style={{ color: 'red', textAlign: 'center', fontWeight: 'bold' }}>Batal</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -234,36 +411,41 @@ export default function AdminDashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF' }, // Putih bersih agar warna lain lebih menonjol
-  tabBar: { flexDirection: 'row', backgroundColor: '#FFF', elevation: 4, borderBottomWidth: 1, borderColor: '#D4C4B7' }, // Border Beige
+  container: { flex: 1, backgroundColor: '#FFF' },
+  tabBar: { flexDirection: 'row', backgroundColor: '#FFF', elevation: 4, borderBottomWidth: 1, borderColor: '#D4C4B7' },
   tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
-  tabActive: { borderBottomWidth: 4, borderColor: '#B58255' }, // Indikator tab Caramel Brown
-  tabLabel: { fontSize: 11, color: '#1A1412', opacity: 0.6, marginTop: 4 }, // Teks inactive Espresso Black (dibikin agak pudar)
-  tabLabelActive: { color: '#B58255', fontWeight: 'bold' }, // Teks active Caramel Brown
+  tabActive: { borderBottomWidth: 4, borderColor: '#B58255' },
+  tabLabel: { fontSize: 10, color: '#1A1412', opacity: 0.6, marginTop: 4 },
+  tabLabelActive: { color: '#B58255', fontWeight: 'bold' },
   sectionTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, color: '#1A1412' },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
-  statsCard: { flex: 0.48, padding: 20, borderRadius: 15, alignItems: 'center', elevation: 2, backgroundColor: '#D4C4B7' }, // Card Beige
-  statsValue: { fontSize: 28, fontWeight: 'bold', color: '#1A1412' },
-  statsLabel: { fontSize: 13, color: '#3A4534', marginTop: 5 }, // Label Dark Green
+  statsCard: { flex: 0.48, padding: 20, borderRadius: 15, alignItems: 'center', elevation: 2 },
+  statsCardFull: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 15, marginBottom: 15, elevation: 2 },
+  statsValue: { fontSize: 24, fontWeight: 'bold', color: '#1A1412' },
+  statsLabel: { fontSize: 13, color: '#3A4534', marginTop: 5 },
   refreshBtn: { backgroundColor: '#B58255', padding: 15, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 10 },
   btnAdd: { backgroundColor: '#B58255', margin: 15, padding: 15, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', elevation: 3 },
   card: { flexDirection: 'row', padding: 18, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#D4C4B7', alignItems: 'center' },
   nameText: { fontWeight: 'bold', fontSize: 17, color: '#1A1412' },
-  categoryBadge: { fontSize: 12, color: '#3A4534', fontStyle: 'italic', marginBottom: 3 }, 
-  priceText: { color: '#B58255', fontWeight: 'bold', fontSize: 15 }, // Harga pakai Caramel
+  categoryBadge: { fontSize: 12, color: '#3A4534', fontStyle: 'italic', marginBottom: 3 },
+  priceText: { color: '#B58255', fontWeight: 'bold', fontSize: 15 },
   actionRow: { flexDirection: 'row', width: 110, justifyContent: 'space-between' },
-  orderCard: { backgroundColor: '#FFF', margin: 12, padding: 18, borderRadius: 15, elevation: 3, borderWidth: 1, borderColor: '#D4C4B7' }, // Tambah border tipis beige
+  orderCard: { backgroundColor: '#FFF', margin: 12, padding: 18, borderRadius: 15, elevation: 3, borderWidth: 1, borderColor: '#D4C4B7' },
   orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   custName: { fontWeight: 'bold', fontSize: 18, color: '#1A1412' },
   orderTotal: { fontSize: 16, marginVertical: 6, color: '#1A1412' },
   orderStatus: { fontWeight: 'bold', fontSize: 14, marginBottom: 12, color: '#B58255' },
-  btnRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  btnWA: { backgroundColor: '#3A4534', padding: 12, borderRadius: 10, flex: 0.48, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }, // Tombol WA Dark Green
-  btnDone: { backgroundColor: '#B58255', padding: 12, borderRadius: 10, flex: 0.48, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }, // Tombol Selesai Caramel
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(26, 20, 18, 0.7)', justifyContent: 'center', alignItems: 'center' }, // Overlay pakai base Espresso Black
+  btnRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  btnWA: { backgroundColor: '#3A4534', padding: 10, borderRadius: 10, flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  btnEdit: { backgroundColor: '#2980B9', padding: 10, borderRadius: 10, flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  btnDone: { backgroundColor: '#B58255', padding: 10, borderRadius: 10, flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  customerCard: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#D4C4B7' },
+  customerAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#B58255', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  customerAvatarText: { color: '#FFF', fontWeight: 'bold', fontSize: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(26, 20, 18, 0.7)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { backgroundColor: '#FFF', width: '88%', padding: 25, borderRadius: 20, maxHeight: '80%' },
   modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center', color: '#1A1412' },
   inputLabel: { fontWeight: 'bold', marginBottom: 5, color: '#1A1412' },
-  input: { backgroundColor: '#FFF', padding: 14, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#D4C4B7', color: '#1A1412' }, // Input field dengan border Beige
-  btnSave: { backgroundColor: '#B58255', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 }
+  input: { backgroundColor: '#FFF', padding: 14, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#D4C4B7', color: '#1A1412' },
+  btnSave: { backgroundColor: '#B58255', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
 });
