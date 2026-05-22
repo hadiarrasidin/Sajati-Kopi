@@ -11,7 +11,9 @@ import AdminDashboardScreen from './screens/AdminDashboardScreen';
 import ChatBot from './components/ChatbotButton';
 import LaporanScreen from './screens/LaporanScreen';
 import ProfileUMKMScreen from './screens/ProfileUMKMScreen';
+import PromoInput from './screens/PromoInput';
 import PromoScreen from './screens/PromoScreen';
+import StoreProfileScreen from './screens/StoreProfileScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -21,13 +23,15 @@ export default function App() {
       <Stack.Navigator initialRouteName="Welcome">
         <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
         <Stack.Screen name="LoginOwner" component={LoginOwnerScreen} options={{ title: 'Login Admin' }} />
-        <Stack.Screen name="CustomerHome" component={CustomerHomeScreen} options={{ title: 'Katalog Produk' }} />
+        <Stack.Screen name="CustomerHome" component={CustomerHomeScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Detail" component={DetailScreen} options={{ title: 'Detail Produk' }} />
         <Stack.Screen name="Cart" component={CartScreen} options={{ title: 'Keranjang Belanja' }} />
         <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Laporan" component={LaporanScreen} options={{ title: 'Laporan' }} />
         <Stack.Screen name="ProfileUMKM" component={ProfileUMKMScreen} options={{ title: 'Profil UMKM' }} />
-        <Stack.Screen name="Promo" component={PromoScreen} options={{ title: 'Promo' }} />
+        <Stack.Screen name="Promo" component={PromoInput} options={{ title: 'Manajemen Promo' }} />
+        <Stack.Screen name="PromoScreen" component={PromoScreen} options={{ title: 'Promo Santuy' }} />
+        <Stack.Screen name="StoreProfile" component={StoreProfileScreen} options={{ title: 'Profile' }} />
       </Stack.Navigator>
       <ChatBot />
     </NavigationContainer>

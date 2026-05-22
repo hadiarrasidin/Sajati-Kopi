@@ -39,16 +39,28 @@ export default function AdminProducts() {
   };
 
   const toggleStatus = async (id, currentStatus) => {
-    await supabase.from('products').update({ is_active: !currentStatus }).eq('id', id);
-    fetchProducts();
-  };
-
-  const deleteProduct = (id) => {
-    Alert.alert("Hapus", "Hapus produk ini permanen?", [
-      { text: "Batal" },
-      { text: "Hapus", onPress: async () => { await supabase.from('products').delete().eq('id', id); fetchProducts(); }, style: 'destructive' }
-    ]);
-  };
+    const { error } = await supabase
+      .from('products')
+      .update({ is_active: !currentStatus })
+      .eq('id', id);
+    
+    if (error) Alert.alert("Error", error.message);
+    else fetchProducts();
+};
+const deleteProduct = (id) => {
+  Alert.alert("Hapus", "Hapus produk ini permanen?", [
+    { text: "Batal" },
+    { 
+      text: "Hapus", 
+      onPress: async () => { 
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) Alert.alert("Error", error.message);
+        else fetchProducts();
+      }, 
+      style: 'destructive' 
+    }
+  ]);
+};
 
   return (
     <View style={styles.container}>

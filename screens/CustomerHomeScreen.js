@@ -1,51 +1,155 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, StyleSheet, ScrollView, SafeAreaView, Alert, TextInput, Dimensions } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View, Text, TouchableOpacity, Image, StyleSheet,
+  ScrollView, SafeAreaView, Alert, TextInput,
+  Dimensions, Linking, ActivityIndicator
+} from 'react-native';
 import { supabase } from '../supabase';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 48) / 3;
+const IS_WEB = width > 600;
+const CARD_WIDTH = IS_WEB ? (width - 80) / 4 - 12 : (width - 48) / 2 - 12;
+
+const categoryEmoji = {
+  'coffe': '☕',
+  'sweet coffe': '🧋',
+  'non coffe': '🥤',
+  'light meal': '🥗',
+  'main course': '🍽️',
+  'noodles & pasta': '🍝',
+};
 
 export default function CustomerHomeScreen({ navigation }) {
-  const [products, setproducts] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [profile, setProfile] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
   const categories = ['Semua', 'coffe', 'sweet coffe', 'non coffe', 'light meal', 'main course', 'noodles & pasta'];
 
-  useEffect(() => { fetchproducts(); }, []);
+ useFocusEffect(
+  useCallback(() => {
+    fetchProducts();
+    fetchProfile();
+  }, [])
+);
 
-  const fetchproducts = async () => {
+  const fetchProducts = async () => {
     try {
       const { data, error } = await supabase.from('products').select('*').eq('is_active', true);
       if (error) throw error;
-      setproducts(data || []);
+      setProducts(data || []);
     } catch (error) {
       console.error('Error fetching products:', error);
       Alert.alert('Gagal', 'Tidak dapat memuat produk.');
     }
   };
 
-  const filteredproducts = products.filter(p => {
+  const fetchProfile = async () => {
+    try {
+      const { data } = await supabase
+        .from('profile_umkm')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+      if (data) setProfile(data);
+    } catch (e) {
+      console.error('Error fetching profile:', e.message);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  const openWhatsApp = () => {
+    if (!profile?.whatsapp) return;
+    const num = profile.whatsapp.startsWith('0')
+      ? '62' + profile.whatsapp.slice(1)
+      : profile.whatsapp;
+    Linking.openURL(`whatsapp://send?phone=${num}`);
+  };
+
+  const filteredProducts = products.filter(p => {
     const matchesCategory = selectedCategory === 'Semua' || p.category === selectedCategory;
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
+  const grouped = {};
+  filteredProducts.forEach(p => {
+    if (!grouped[p.category]) grouped[p.category] = [];
+    grouped[p.category].push(p);
+  });
+
+  const chunkArray = (arr, size) => {
+    const result = [];
+    for (let i = 0; i < arr.length; i += size) result.push(arr.slice(i, i + size));
+    return result;
+  };
+
+  const cols = IS_WEB ? 4 : 2;
+
   return (
     <SafeAreaView style={styles.container}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerSub}>Selamat datang di</Text>
-          <Text style={styles.brand}>Sajati Kopi ☕</Text>
+          <Text style={styles.brand}>Kasir Digital☕</Text>
         </View>
-        <TouchableOpacity style={styles.cartBtn} onPress={() => navigation.navigate('Cart')}>
-          <MaterialCommunityIcons name="cart-outline" size={22} color="#FFF" />
-        </TouchableOpacity>
+       <View style={styles.headerButtons}>
+  <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.navigate('PromoScreen')}>
+    <MaterialCommunityIcons name="tag-multiple" size={20} color="#C68642" />
+    <Text style={styles.headerBtnLabel}>Promo</Text>
+  </TouchableOpacity>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.navigate('StoreProfile')}>
+    <MaterialCommunityIcons name="store-outline" size={20} color="#C68642" />
+    <Text style={styles.headerBtnLabel}>Profile</Text>
+  </TouchableOpacity>
+          <TouchableOpacity style={styles.cartBtn} onPress={() => navigation.navigate('Cart')}>
+    <MaterialCommunityIcons name="cart-outline" size={22} color="#FFF" />
+    <Text style={[styles.headerBtnLabel, { color: '#FFF' }]}>Keranjang</Text>
+  </TouchableOpacity>
+        </View>
       </View>
+      
 
-      {/* Search */}
+      {/* ── Store Info Banner ── */}
+      {!loadingProfile && profile && (
+        <View style={styles.storeBanner}>
+          <View style={styles.storeLeft}>
+            <View style={styles.storeIconWrap}>
+              <MaterialCommunityIcons name="store" size={20} color="#C68642" />
+            </View>
+            <View style={{ flex: 1 }}>
+              {profile.name ? (
+                <Text style={styles.storeName} numberOfLines={1}>{profile.name}</Text>
+              ) : null}
+              {profile.address ? (
+                <Text style={styles.storeAddress} numberOfLines={1}>
+                  📍 {profile.address}
+                </Text>
+              ) : null}
+              {profile.description ? (
+                <Text style={styles.storeDesc} numberOfLines={1}>
+                  {profile.description}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          {profile.whatsapp && (
+            <TouchableOpacity style={styles.waChip} onPress={openWhatsApp}>
+              <MaterialCommunityIcons name="whatsapp" size={15} color="#25D366" />
+              <Text style={styles.waChipText}>Chat</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* ── Search ── */}
       <View style={styles.searchWrapper}>
         <MaterialCommunityIcons name="magnify" size={20} color="#C68642" style={{ marginRight: 8 }} />
         <TextInput
@@ -62,7 +166,7 @@ export default function CustomerHomeScreen({ navigation }) {
         )}
       </View>
 
-      {/* Category chips */}
+      {/* ── Category chips ── */}
       <View style={{ height: 44, marginBottom: 10 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
           {categories.map(c => (
@@ -72,51 +176,56 @@ export default function CustomerHomeScreen({ navigation }) {
               style={[styles.catChip, selectedCategory === c && styles.catChipActive]}
             >
               <Text style={[styles.catChipText, selectedCategory === c && styles.catChipTextActive]}>
-                {c}
+                {categoryEmoji[c] || '✨'} {c}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
-      {/* Section title */}
-      <View style={styles.sectionRow}>
-        <Text style={styles.sectionTitle}>
-          {selectedCategory === 'Semua' ? '✨ Semua Menu' : selectedCategory}
-        </Text>
-        <Text style={styles.sectionCount}>{filteredproducts.length} item</Text>
-      </View>
+      {/* ── Product list ── */}
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 100 }}>
 
-      {/* Product grid */}
-      <FlatList
-        data={filteredproducts}
-        numColumns={3}
-        keyExtractor={item => item.id.toString()}
-        contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 100 }}
-        columnWrapperStyle={{ justifyContent: 'flex-start' }}
-        ListEmptyComponent={
+        {Object.keys(grouped).length === 0 && (
           <View style={{ alignItems: 'center', marginTop: 60 }}>
             <MaterialCommunityIcons name="coffee-off" size={64} color="#D4B896" />
             <Text style={{ color: '#B89070', marginTop: 12, fontSize: 15 }}>Menu tidak ditemukan</Text>
           </View>
-        }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => navigation.navigate('Detail', { product: item })}
-            activeOpacity={0.85}
-          >
-            <Image source={{ uri: item.image_url }} style={styles.cardImg} />
-            <View style={styles.cardBadge}>
-              <Text style={styles.cardBadgeText}>{item.category}</Text>
-            </View>
-            <View style={styles.cardBody}>
-              <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
-              <Text style={styles.cardPrice}>Rp {item.price.toLocaleString()}</Text>
-            </View>
-          </TouchableOpacity>
         )}
-      />
+
+        {Object.keys(grouped).map(category => (
+          <View key={category} style={styles.categorySection}>
+            <View style={styles.categoryHeader}>
+              <Text style={styles.categoryTitle}>
+                {categoryEmoji[category] || '🍴'} {category}
+              </Text>
+              <Text style={styles.categoryCount}>{grouped[category].length} item</Text>
+            </View>
+
+            {chunkArray(grouped[category], cols).map((row, rowIdx) => (
+              <View key={rowIdx} style={styles.row}>
+                {row.map(item => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.card}
+                    onPress={() => navigation.navigate('Detail', { product: item })}
+                    activeOpacity={0.85}
+                  >
+                    <Image source={{ uri: item.image_url }} style={styles.cardImg} />
+                    <View style={styles.cardBody}>
+                      <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+                      <Text style={styles.cardPrice}>Rp {item.price.toLocaleString()}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                {row.length < cols && [...Array(cols - row.length)].map((_, i) => (
+                  <View key={`empty-${i}`} style={[styles.card, { backgroundColor: 'transparent', borderWidth: 0, elevation: 0 }]} />
+                ))}
+              </View>
+            ))}
+          </View>
+        ))}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -141,23 +250,99 @@ const styles = StyleSheet.create({
     color: '#B89070',
     letterSpacing: 0.5,
   },
+  headerButtons: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+headerBtn: {
+  width: 52,
+  height: 52,
+  borderRadius: 14,
+  backgroundColor: '#FFF5E9',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderWidth: 1,
+  borderColor: '#EDE0CF',
+},
+headerBtnLabel: {
+  fontSize: 9,
+  color: '#C68642',
+  fontWeight: 'bold',
+  marginTop: 2,
+},
   brand: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#3B1F0E',
   },
   cartBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#C68642',
+  width: 52,
+  height: 52,
+  borderRadius: 14,
+  backgroundColor: '#C68642',
+  alignItems: 'center',
+  justifyContent: 'center',
+  elevation: 5,
+},
+  storeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#FFF5E9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDE0CF',
+    gap: 10,
+  },
+  storeLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 10,
+  },
+  storeIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#C68642',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#EDE0CF',
+  },
+  storeName: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#3B1F0E',
+  },
+  storeAddress: {
+    fontSize: 11,
+    color: '#8B6344',
+    marginTop: 1,
+  },
+  storeDesc: {
+    fontSize: 11,
+    color: '#B89070',
+    fontStyle: 'italic',
+    marginTop: 1,
+  },
+  waChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F0FFF4',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+  },
+  waChipText: {
+    fontSize: 12,
+    color: '#25D366',
+    fontWeight: 'bold',
   },
   searchWrapper: {
     flexDirection: 'row',
@@ -195,27 +380,38 @@ const styles = StyleSheet.create({
     color: '#8B6344',
     fontSize: 12,
     fontWeight: '500',
+    textTransform: 'capitalize',
   },
   catChipTextActive: {
     color: '#FFF',
     fontWeight: 'bold',
   },
-  sectionRow: {
+  categorySection: {
+    marginBottom: 24,
+  },
+  categoryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 10,
+    paddingVertical: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#C68642',
+    paddingLeft: 12,
   },
-  sectionTitle: {
-    fontSize: 15,
+  categoryTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#3B1F0E',
     textTransform: 'capitalize',
   },
-  sectionCount: {
+  categoryCount: {
     fontSize: 12,
     color: '#B89070',
+  },
+  row: {
+    flexDirection: 'row',
+    marginBottom: 6,
   },
   card: {
     width: CARD_WIDTH,
@@ -233,30 +429,15 @@ const styles = StyleSheet.create({
   },
   cardImg: {
     width: '100%',
-    height: CARD_WIDTH,
+    height: 160,
     resizeMode: 'cover',
-  },
-  cardBadge: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    backgroundColor: 'rgba(198,134,66,0.9)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  cardBadgeText: {
-    color: '#FFF',
-    fontSize: 9,
-    fontWeight: 'bold',
-    textTransform: 'capitalize',
   },
   cardBody: {
     padding: 8,
   },
   cardName: {
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 16,
     color: '#3B1F0E',
     marginBottom: 2,
     textTransform: 'capitalize',
@@ -264,6 +445,6 @@ const styles = StyleSheet.create({
   cardPrice: {
     color: '#4A7C59',
     fontWeight: 'bold',
-    fontSize: 11,
+    fontSize: 14,
   },
 });
